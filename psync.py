@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+# jianjun create the psync project at feb 24,2011
+# psync to for management the sync file to communitcat
+# with reomte computer
+# jianjun365222@gmail.com
+
 import os, sys
 
 # the sync file list , orginazed as a list of dir or files
@@ -14,17 +19,66 @@ import os, sys
 # dir = {"name":"root","parent":None,"filelist":[],"dirlist":[]}
 
 sync_files=[]
+sync_file="./synclist"
 
 #save a dir structure to file
-def _save_dir(fd, dir):
-    if(os.path.isfile(dirpath)):
-        return
+def _save_dir_tree(fd, dirdic):
+    #if(os.path.isfile(dirdic)):
+    #    return
+    fd.write("di "+ os.path.join(dirdic["name"]) +'\n')
+    for f in dirdic["filelist"]:
+        fd.write("f  "+ os.path.join(dirdic["name"],f)+'\n')
+    
+    for d in dirdic["dirlist"]:
+        _save_dir_tree(fd,d)
+    fd.write("do "+ os.path.join(dirdic["name"]) +'\n')    
 
-def save_sync_files():
-    pass
+#read frome the file , at a line started by "di" ,
+#and read on , to construct a dir structrue
+def _load_dir_tree(fd):
+    dir_tree={}
 
+    dir_tree["name"]=fd.readline().split()[1]
+    dir_tree["filelist"]=[]
+    dir_tree["dirlist"]=[]
+
+    while 1:
+        line = fd.readline()
+        if not line:
+            break
+        if(line.startswith("f ")):
+            dir_tree["filelist"].append(line.split()[1])
+        if(line.startswith("di ")):
+            dir_tree["dirlist"].append(_load_dir_tree(fd))
+        if(line.startswith("do")):
+            return dir_tree
+
+    return dir_tree
+
+#load sync file from disk to sync_files
 def load_sync_files():
-    pass
+    fd = open(sync_file,"r")
+    while 1:
+        line = fd.readline()
+        if not line:
+            break
+        if(line.startswith("F  ")):  # a file to sync
+            sync_files.append(line.split()[1])
+        if(line.startswith("DS ")):   # a dir to sync
+            sync_files.append(_load_dir_tree(fd))
+    fd.close()
+
+#save sync_files sync file to disk 
+def save_sync_files():
+    fd = open(sync_file,"w")
+    for f in sync_files:
+        if isinstance(f,str):
+            fd.write('F  '+ f+ "\n")
+        elif isinstance(f,dict):
+            fd.write('DS '+ f["name"]+ '\n')
+            _save_dir_tree(fd,f)
+    fd.close()
+
 
 # get a tree object of the dirpath
 def get_dir_tree(dirpath):
@@ -73,7 +127,12 @@ def sync():
     pass
 
 def main():
-    get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
+    # mydir = get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
+    # sync_files.append(mydir)
+    # sync_files.append("~/.emacs")
+    # sync_files.append("/data/doc/english2.txt")
+    load_sync_files()
+    save_sync_files()
 
 if __name__ == '__main__':
     main()
