@@ -7,6 +7,7 @@
 
 import os, sys
 
+
 # the sync file list , orginazed as a list of dir or files
 # dir contains files , the structure is descript bellow
 #
@@ -20,6 +21,7 @@ import os, sys
 
 sync_files=[]
 sync_file="./synclist"
+user_data={}
 
 #save a dir structure to file
 def _save_dir_tree(fd, dirdic):
@@ -80,7 +82,7 @@ def save_sync_files():
     fd.close()
 
 
-# get a tree object of the dirpath
+# get a tree object of the dirpath on the computer
 def get_dir_tree(dirpath):
 
     if(os.path.isfile(dirpath)):
@@ -114,17 +116,50 @@ def add_to_sync(path):
     if(os.path.isdir(path)):
         pass
 
-# remove a file from sync list
+# remove a file from sync tree , path is a file or dir on the 
+# computer
 def remove_sync(path):
-    pass
+
+    if os.path.ispath(path):
+        if path in sync_files:
+            sync_files.remove(path)
+
+    elif os.path.isdir(path):
+        for item in sync_files:
+            if isinstance(item,dict) and item[name] == path:
+                sync_files.remove(item)
+
+    elif :
+        print("the path not contained in the sync list")
 
 # get sync list
 def get_sync_list():
     pass
 
-
 def sync():
     pass
+
+def load_config_file():
+    data = open(".config","r").readlines()
+    for line in data:
+        if line[0] = '#':
+            continue
+
+        try:
+            key,val = line.strip().split('=',1)
+            user_data[key]=val
+        except ValueError:
+            pass
+
+def set_remote_host(hostname,username,password):
+    user_data['hostname'] = hostname
+    user_data['username'] = username
+    epwd = user_data['password']
+
+def save():
+    data = open('.config','w')
+    for key,val in user_data:
+        line = u"%s=%s" % (key , unicode(val))
 
 def main():
     # mydir = get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
