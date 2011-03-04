@@ -5,35 +5,29 @@
 # with reomte computer
 # jianjun365222@gmail.com
 
-import os, sys
-
+import os, sys, subprocess, shlex
 
 # the sync file list , orginazed as a list of dir or files
 # dir contains files , the structure is descript bellow
 #
 #      |--"name":dir name
 #      |
+#      |
 # dir -|--"filelist":["filename1","filename2",]
 #      |
 #      |--"dirlist":["structrue of dir list",]
 #
-# dir = {"name":"root","parent":None,"filelist":[],"dirlist":[]}
+# dir = {"name":"root","remote":None,"filelist":[],"dirlist":[]}
+#
 
-sync_files=[]
+#element is dictionary {"type":dir_or_file,"content":file.name.path_or_dir.
+#                       structure,"remote_path":remote_location}
+sync_files=[] 
+
 sync_file="./synclist"
+
 user_data={}
 
-#save a dir structure to file
-def _save_dir_tree(fd, dirdic):
-    #if(os.path.isfile(dirdic)):
-    #    return
-    fd.write("di "+ os.path.join(dirdic["name"]) +'\n')
-    for f in dirdic["filelist"]:
-        fd.write("f  "+ os.path.join(dirdic["name"],f)+'\n')
-    
-    for d in dirdic["dirlist"]:
-        _save_dir_tree(fd,d)
-    fd.write("do "+ os.path.join(dirdic["name"]) +'\n')    
 
 #read frome the file , at a line started by "di" ,
 #and read on , to construct a dir structrue
@@ -64,26 +58,45 @@ def load_sync_files():
         line = fd.readline()
         if not line:
             break
+        f = {}
         if(line.startswith("F  ")):  # a file to sync
-            sync_files.append(line.split()[1])
-        if(line.startswith("DS ")):   # a dir to sync
-            sync_files.append(_load_dir_tree(fd))
+            f["type"] = "file"
+            f["content"] = line.split()[1]
+        elif(line.startswith("DS ")):   # a dir to sync
+            f["type"] = "dir"
+            f["content"] = _load_dir_tree(fd)
+
+        f["remote"] = line.split("->")[1]
+
+        sync_files.append(f)
     fd.close()
+
+#save a dir structure to file
+def _save_dir_tree(fd, dirdic):
+    #if(os.path.isfile(dirdic)):
+    #    return
+    fd.write("di "+ os.path.join(dirdic["name"]) +'\n')
+    for f in dirdic["filelist"]:
+        fd.write("f  "+ os.path.join(dirdic["name"],f)+'\n')
+    
+    for d in dirdic["dirlist"]:
+        _save_dir_tree(fd,d)
+    fd.write("do "+ os.path.join(dirdic["name"]) +'\n')    
 
 #save sync_files sync file to disk 
 def save_sync_files():
     fd = open(sync_file,"w")
     for f in sync_files:
-        if isinstance(f,str):
-            fd.write('F  '+ f+ "\n")
-        elif isinstance(f,dict):
-            fd.write('DS '+ f["name"]+ '\n')
-            _save_dir_tree(fd,f)
+        if f["type"] == "file":
+            fd.write('F  '+ f["content"]+ " -> "+ f["remote"]+ "\n")
+        elif f["type"] == "dir":
+            fd.write('DS '+ f["content"]["name"]+ " -> "+ f["remote"]+ '\n')
+            _save_dir_tree(fd,f["content"])
     fd.close()
 
 
 # get a tree object of the dirpath on the computer
-def get_dir_tree(dirpath):
+def _get_dir_tree(dirpath):
 
     if(os.path.isfile(dirpath)):
         return []
@@ -101,7 +114,7 @@ def get_dir_tree(dirpath):
             print(file_path)
             current['filelist'].append(f)
         if os.path.isdir(file_path):
-            current['dirlist'].append( get_dir_tree( file_path ) )
+            current['dirlist'].append( _get_dir_tree( file_path ) )
 
     return current
 
@@ -112,41 +125,96 @@ def get_file_index_position(path):
     pass
 
 # add a file to sync list
-def add_to_sync(path):
-    if(os.path.isdir(path)):
-        pass
+def add_to_sync(local_path,remote_path):
+    if not os.path.exists(local_path):
+        printf("%1 did not exists in you system!" % local_path)
+    elif os.path.isdir(local_path):
+        sync_files.append(local_path)
+    elif os.path.isfile(local_path):
+        dir_tree = get_dir_tree(local_path)
+        sync_files.append(dir_tree)
 
 # remove a file from sync tree , path is a file or dir on the 
 # computer
-def remove_sync(path):
+def remove_from_sync(path):
 
+    remove_file = False
+    found_file = False
     if os.path.ispath(path):
-        if path in sync_files:
-            sync_files.remove(path)
+        remove_file = True
 
-    elif os.path.isdir(path):
-        for item in sync_files:
-            if isinstance(item,dict) and item[name] == path:
-                sync_files.remove(item)
+    for f in sync_files:
+        if remove_file and f["type"] == "file" and f["content"] == path:
+            sync_files.remove(f)
+            found_file = True
+            break
+        elif !remove_file and f["type"] == "dir" and f["content"]["name"] == path:
+            sync_files.remove(f)
+            found_file = True
+            break
 
-    elif :
+    if not found_file:
         print("the path not contained in the sync list")
 
 # get sync list
-def get_sync_list():
+def list_sync_file(deep=None):
     pass
 
-def sync():
-    pass
+# make a sync to remote computer
+def sync(push=None):
+    push_file = True
+    if push == False:
+        push_file = False
+
+    for f in sync_files:
+        if f["type"] == "file":
+            do_sync_file(f["content"],f["remote"])
+        elif f["type"] == "dir":
+            do_sync_dir(f["content"]["name"],f["remote"])
+
+push_cmd = "rsync %(localfile)s %(username)s@%(hostname):%(remote)"
+pull_cmd = "rsync %(username)s@%(hostname):%(remote) %(localfile)s"
+create_dir_cmd = "ssh %(username)s@%(hostname)s \"cd %(path);mkdir %(dir)\" "
+check_dir_exist = "rsync %(username)s@%(hostname)s:"
+
+#sync a local dir to a remote dir recursivly
+def sync_dir(local_dir, remote_dir, sync_type=None):
+    #if remote computer have not the dir , create it
+    dir_exist = False
+    if not dir_exist:
+        pass # create dir
+
+    
+
+#sync a local file with a remote file,default sync type is push
+def do_sync_file(local_file, remote_dir, sync_type=None):
+    if sync_type == 'pull':
+        cmd = pull_cmd
+    elif:
+        cmd = push_cmd
+
+    cmd = push_cmd % {
+        'localfile' : local_file,
+        'remote' : remote_file,
+        'username' : user_data["username"]
+        'hostname' : user_data["hostname"]
+        }
+
+    env = os.environ.copy()
+    env["RSYNC_PASSWORD"] = user_data["password"]
+    ret = subprocess.call(cmd, env=env, shell=True)
+    if ret == -1:
+        print("sync %s failed" % local_file)
 
 def load_config_file():
     data = open(".config","r").readlines()
     for line in data:
         if line[0] = '#':
             continue
-
         try:
             key,val = line.strip().split('=',1)
+            if key == 'password':
+                val = base64.decodestring(val)
             user_data[key]=val
         except ValueError:
             pass
@@ -154,14 +222,32 @@ def load_config_file():
 def set_remote_host(hostname,username,password):
     user_data['hostname'] = hostname
     user_data['username'] = username
-    epwd = user_data['password']
+    user_data['password'] = password
 
 def save():
     data = open('.config','w')
     for key,val in user_data:
+        if key == 'password':
+            val = base64.encodestring(val)
         line = u"%s=%s" % (key , unicode(val))
+        data.write(line)
 
-def main():
+def usage():
+    sys.stderr.write("""Usage: %(progName)s [<option>]
+Options:
+    --now [ pull | push ]
+         make a sync to remote computer now , the default is push
+    --add localPath remotePath
+         add a file or dir to the sync tree 
+    --rm  path
+         remove a file or dir frome the sync tree
+    --list [ deep ]
+         list the sync file list , if the deep is provided ,all subdirctoriry 
+         will be printed
+""" % {    "progName": os.path.split(sys.argv[0])[1],   })
+    sys.exit(1)
+
+def test():
     # mydir = get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
     # sync_files.append(mydir)
     # sync_files.append("~/.emacs")
@@ -169,5 +255,37 @@ def main():
     load_sync_files()
     save_sync_files()
 
+def main(argv):
+
+    if len(argv) > 3:
+        usage()
+
+    # load the sync file 
+    load_sync_files()
+    load_config_file()
+
+    sync_file_changed = False
+    arg = argv[1]
+    if arg.startswith("--now"):
+        sync()
+    elif arg.startswith("--add") or arg.startswith("--rm"):
+        path = argv[2]
+        if os.path.exist(path):
+            if arg.startswith("--add"):
+                add_to_sync(arg[2])
+            else:
+                remove_from_sync(arg[2])
+            sync_file_changed = True                
+        else:
+            print("%1 did not exit in you system ,check it" % path)
+    elif arg.startswith("--list"):
+        deep_list=False
+        if len(argv) == 3 and argv[2]=="deep":
+            deep_list=True
+        list_sync_file(deep)
+
+    if sync_file_changed :
+        save_sync_files()
+            
 if __name__ == '__main__':
-    main()
+    main(sys.argv)
