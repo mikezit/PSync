@@ -97,7 +97,6 @@ def save_sync_files():
 
 # get a tree object of the dirpath on the computer
 def _get_dir_tree(dirpath):
-
     if(os.path.isfile(dirpath)):
         return []
 
@@ -137,7 +136,6 @@ def add_to_sync(local_path,remote_path):
 # remove a file from sync tree , path is a file or dir on the 
 # computer
 def remove_from_sync(path):
-
     remove_file = False
     found_file = False
     if os.path.ispath(path):
@@ -170,21 +168,53 @@ def sync(push=None):
         if f["type"] == "file":
             do_sync_file(f["content"],f["remote"])
         elif f["type"] == "dir":
-            do_sync_dir(f["content"]["name"],f["remote"])
+            do_sync_dir(f["content"],f["remote"])
 
 push_cmd = "rsync %(localfile)s %(username)s@%(hostname):%(remote)"
 pull_cmd = "rsync %(username)s@%(hostname):%(remote) %(localfile)s"
-create_dir_cmd = "ssh %(username)s@%(hostname)s \"cd %(path);mkdir %(dir)\" "
-check_dir_exist = "rsync %(username)s@%(hostname)s:"
+create_dir_cmd = "ssh %(username)s@%(hostname)s \"cd %(path);mkdir %(dir_name)\" "
+check_dir_exist = "rsync %(username)s@%(hostname)s:%(remote_dir)s|grep %(dir_name)s"
+
+#first check if remote dir is exist , if not , create it
+def _check_remote_dir(local_dir,remote_dir):
+    cmd = check_dir_exist % {
+        'username' : user_data["username"]
+        'hostname' : user_data["hostname"]
+        'remote_dir' : os.path.dirname(remote_dir)
+        'dir_name' : os.path.basename(remote_dir)
+        }
+
+    ret = subprocess.call(cmd, shell=True)
+    if ret == 0: # ok ,dir exist
+        return
+
+    # on , create one
+    cmd = create_dir_cmd %{
+        'username' : user_data["username"]
+        'hostname' : user_data["hostname"]
+        'path' : os.path.dirname(remote_dir)
+        'dir_name' : os.path.basename(remote_dir)
+        }
+
+    ret = subprocess.call(cmd,shell=True)
+    if ret == 1:
+        print("error : can't create dir on remote computer!")
+        os.exit()
+
 
 #sync a local dir to a remote dir recursivly
-def sync_dir(local_dir, remote_dir, sync_type=None):
+def do_sync_dir(local_dir, remote_dir, sync_type=None):
     #if remote computer have not the dir , create it
-    dir_exist = False
-    if not dir_exist:
-        pass # create dir
-
+    _check_remote_dir(local_dir["name"],remote_dir);
     
+    for f in local_dir["filelist"]:
+        f_dir = os.path.join(local_dir["name"],f)
+        do_sync_file(f,remote_dir,sync_type)
+        
+    remote_dir = os.path.join(remote_dir,os.path.basename(local_dir["name"]))
+    for d in local_dir["dirlist"]:
+        do_sync_dir(d,remote_dir,sync_type)
+
 
 #sync a local file with a remote file,default sync type is push
 def do_sync_file(local_file, remote_dir, sync_type=None):
