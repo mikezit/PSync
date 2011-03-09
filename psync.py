@@ -5,7 +5,7 @@
 # with reomte computer
 # jianjun365222@gmail.com
 
-import os, sys, subprocess, shlex
+import os, sys, subprocess, shlex, getopt
 
 # the sync file list , orginazed as a list of dir or files
 # dir contains files , the structure is descript bellow
@@ -177,6 +177,7 @@ check_dir_exist = "rsync %(username)s@%(hostname)s:%(remote_dir)s|grep %(dir_nam
 
 #first check if remote dir is exist , if not , create it
 def _check_remote_dir(local_dir,remote_dir):
+    return
     cmd = check_dir_exist % {
         'username' : user_data["username"]
         'hostname' : user_data["hostname"]
@@ -218,6 +219,8 @@ def do_sync_dir(local_dir, remote_dir, sync_type=None):
 
 #sync a local file with a remote file,default sync type is push
 def do_sync_file(local_file, remote_dir, sync_type=None):
+    print("sync %s to %s" % (local_file,remote_dir))
+    return
     if sync_type == 'pull':
         cmd = pull_cmd
     elif:
@@ -263,19 +266,38 @@ def save():
         data.write(line)
 
 def usage():
-    sys.stderr.write("""Usage: %(progName)s [<option>]
+    sys.stderr.write("""
+Usage: 
+Add a sync file  : psync --add localpath --to remotepath
+Make a push sync : psync [--push]
+Make a pull sync : psync --pull
+Remove a file from sync :psync --rm filepath
+List sync files and dirctorys : psync --list [--deep]
+
 Options:
-    --now [ pull | push ]
-         make a sync to remote computer now , the default is push
-    --add localPath remotePath
+    --pull 
+         make a pull sync to remote computer 
+    --push 
+         make a push sync to remote computer 
+    --add localPath 
          add a file or dir to the sync tree 
+    --to remotePath
+         set remotepath
     --rm  path
          remove a file or dir frome the sync tree
-    --list [ deep ]
-         list the sync file list , if the deep is provided ,all subdirctoriry 
-         will be printed
+    --list
+         list the sync file list 
+    --deep
+        if the deep is provided ,all subdirctoriry will be printed
+    --help
+        print this message
 """ % {    "progName": os.path.split(sys.argv[0])[1],   })
-    sys.exit(1)
+
+def error(msg):
+    print(msg)
+    usage()
+    sys.exit(2)
+
 
 def test():
     # mydir = get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
@@ -286,33 +308,55 @@ def test():
     save_sync_files()
 
 def main(argv):
-
-    if len(argv) > 3:
-        usage()
-
     # load the sync file 
     load_sync_files()
     load_config_file()
 
     sync_file_changed = False
     arg = argv[1]
-    if arg.startswith("--now"):
-        sync()
-    elif arg.startswith("--add") or arg.startswith("--rm"):
-        path = argv[2]
-        if os.path.exist(path):
-            if arg.startswith("--add"):
-                add_to_sync(arg[2])
-            else:
-                remove_from_sync(arg[2])
-            sync_file_changed = True                
+
+    local_file=None
+    remote_file=None
+    print_tree=False
+    deep_print=False
+    
+    try:
+        opts, args = getopt.getopt(argv[1:], "l:r:", ["help", "pull","push","add=","to=","rm=","list","deep"])
+    except getopt.GetoptError as err:
+        error(err)
+    for o, a in opts:
+        if on in ["--help","--pull","--push"]:
+            if len(argv) != 2:
+                error("too much arguments")
+
+        if o == "--help":
+            usage()
+            exit(0)
+        elif o == "--pull":
+            sync(False)
+        elif o == "--push":
+            sync(True)
+        elif o == "--list":
+            print_tree=True
+        elif o == "--add":
+            sync_file_changed=True
+            local_file=a
+        elif o == "--to":
+            remote_file=a
+        elif o == "--rm":
+            sync_file_changed=True
+            remove_from_sync(a)
+        elif o == "--deep":
+            deep_print=True
         else:
-            print("%1 did not exit in you system ,check it" % path)
-    elif arg.startswith("--list"):
-        deep_list=False
-        if len(argv) == 3 and argv[2]=="deep":
-            deep_list=True
-        list_sync_file(deep)
+            error("Wrong arguments : %s ! " % o)
+
+    if locale_file != None && remote_file != None:
+        add_to_sync(local_file,remote_file)
+    elif print_tree:
+        list_sync_file(deep_print)
+    else:
+        error("too many arguments!")
 
     if sync_file_changed :
         save_sync_files()
