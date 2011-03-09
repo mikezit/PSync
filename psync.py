@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.1
 
 # jianjun create the psync project at feb 24,2011
 # psync to for management the sync file to communitcat
@@ -22,7 +22,7 @@ import os, sys, subprocess, shlex, getopt
 
 #element is dictionary {"type":dir_or_file,"content":file.name.path_or_dir.
 #                       structure,"remote_path":remote_location}
-sync_files=[] 
+sync_files=[]
 
 sync_file="./synclist"
 
@@ -88,9 +88,9 @@ def save_sync_files():
     fd = open(sync_file,"w")
     for f in sync_files:
         if f["type"] == "file":
-            fd.write('F  '+ f["content"]+ " -> "+ f["remote"]+ "\n")
+            fd.write('F  '+ f["content"]+ " -> "+ f["remote_path"]+ "\n")
         elif f["type"] == "dir":
-            fd.write('DS '+ f["content"]["name"]+ " -> "+ f["remote"]+ '\n')
+            fd.write('DS '+ f["content"]["name"]+ " -> "+ f["remote_path"]+ '\n')
             _save_dir_tree(fd,f["content"])
     fd.close()
 
@@ -146,7 +146,7 @@ def remove_from_sync(path):
             sync_files.remove(f)
             found_file = True
             break
-        elif !remove_file and f["type"] == "dir" and f["content"]["name"] == path:
+        elif remove_file is not True and f["type"] == "dir" and f["content"]["name"] == path:
             sync_files.remove(f)
             found_file = True
             break
@@ -155,8 +155,20 @@ def remove_from_sync(path):
         print("the path not contained in the sync list")
 
 # get sync list
-def list_sync_file(deep=None):
-    pass
+def print_sync_list(deep=None,dir_tree=None):
+    if dir_tree is None:
+        for f in sync_files:
+            if f["type"] == "file":
+                print("File "+f["content"]+"->"+f["remote_path"])
+            elif f["type"] == "dir":
+                print_sync_list(deep,f["content"])
+
+    if dir_tree is not None:
+        for f in dir_tree["filelist"]:
+            print("f "+f)
+        for f in dir_tree["dirlist"]:
+            print("d "+f[name])
+            print_sync_list(deep,f)
 
 # make a sync to remote computer
 def sync(push=None):
@@ -179,9 +191,9 @@ check_dir_exist = "rsync %(username)s@%(hostname)s:%(remote_dir)s|grep %(dir_nam
 def _check_remote_dir(local_dir,remote_dir):
     return
     cmd = check_dir_exist % {
-        'username' : user_data["username"]
-        'hostname' : user_data["hostname"]
-        'remote_dir' : os.path.dirname(remote_dir)
+        'username' : user_data["username"],
+        'hostname' : user_data["hostname"],
+        'remote_dir' : os.path.dirname(remote_dir),
         'dir_name' : os.path.basename(remote_dir)
         }
 
@@ -191,9 +203,9 @@ def _check_remote_dir(local_dir,remote_dir):
 
     # on , create one
     cmd = create_dir_cmd %{
-        'username' : user_data["username"]
-        'hostname' : user_data["hostname"]
-        'path' : os.path.dirname(remote_dir)
+        'username' : user_data["username"],
+        'hostname' : user_data["hostname"],
+        'path' : os.path.dirname(remote_dir),
         'dir_name' : os.path.basename(remote_dir)
         }
 
@@ -223,13 +235,13 @@ def do_sync_file(local_file, remote_dir, sync_type=None):
     return
     if sync_type == 'pull':
         cmd = pull_cmd
-    elif:
+    else:
         cmd = push_cmd
 
     cmd = push_cmd % {
         'localfile' : local_file,
         'remote' : remote_file,
-        'username' : user_data["username"]
+        'username' : user_data["username"],
         'hostname' : user_data["hostname"]
         }
 
@@ -242,7 +254,7 @@ def do_sync_file(local_file, remote_dir, sync_type=None):
 def load_config_file():
     data = open(".config","r").readlines()
     for line in data:
-        if line[0] = '#':
+        if line[0] == '#':
             continue
         try:
             key,val = line.strip().split('=',1)
@@ -262,7 +274,7 @@ def save():
     for key,val in user_data:
         if key == 'password':
             val = base64.encodestring(val)
-        line = u"%s=%s" % (key , unicode(val))
+        line = "%s=%s" % (key , unicode(val))
         data.write(line)
 
 def usage():
@@ -300,14 +312,26 @@ def error(msg):
 
 
 def test():
-    # mydir = get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
-    # sync_files.append(mydir)
-    # sync_files.append("~/.emacs")
-    # sync_files.append("/data/doc/english2.txt")
-    load_sync_files()
+    print("---run test---")
+
+    mydir = _get_dir_tree("/data/android/andorid_2.1/packages/apps/BluetoothChat")
+    element1 = {"type":"dir","content":mydir,"remote_path":"/data/own"}
+    sync_files.append(element1)
+
+    element2 = {"type":"file","content":"~/.emacs","remote_path":"/data/own"}
+    sync_files.append(element2)
+
+    element3 = {"type":"file","content":"/data/tmp/test.py","remote_path":"/data/tmp"}
+    sync_files.append(element3)
+
     save_sync_files()
 
 def main(argv):
+
+    if argv[1]=="--test":
+        test()
+        return
+
     # load the sync file 
     load_sync_files()
     load_config_file()
@@ -321,7 +345,7 @@ def main(argv):
     deep_print=False
     
     try:
-        opts, args = getopt.getopt(argv[1:], "l:r:", ["help", "pull","push","add=","to=","rm=","list","deep"])
+        opts, args = getopt.getopt(argv[1:], "l:r:", ["help", "pull","push","add=","to=","rm=","list","deep","test"])
     except getopt.GetoptError as err:
         error(err)
     for o, a in opts:
@@ -351,10 +375,10 @@ def main(argv):
         else:
             error("Wrong arguments : %s ! " % o)
 
-    if locale_file != None && remote_file != None:
+    if locale_file != None and remote_file != None:
         add_to_sync(local_file,remote_file)
     elif print_tree:
-        list_sync_file(deep_print)
+        print_sync_list(deep=deep_print)
     else:
         error("too many arguments!")
 
