@@ -31,10 +31,14 @@ user_data={}
 
 #read frome the file , at a line started by "di" ,
 #and read on , to construct a dir structrue
-def _load_dir_tree(fd):
+def _load_dir_tree(fd,dir_name=None):
     dir_tree={}
 
-    dir_tree["name"]=fd.readline().split()[1]
+    if dir_name is None:
+        dir_tree["name"]=fd.readline().split()[1]
+    else :
+        dir_tree["name"]=dir_name
+
     dir_tree["filelist"]=[]
     dir_tree["dirlist"]=[]
 
@@ -42,12 +46,15 @@ def _load_dir_tree(fd):
         line = fd.readline()
         if not line:
             break
-        if(line.startswith("f ")):
-            dir_tree["filelist"].append(line.split()[1])
-        if(line.startswith("di ")):
-            dir_tree["dirlist"].append(_load_dir_tree(fd))
         if(line.startswith("do")):
             return dir_tree
+        elif(line.startswith("f ")):
+            dir_tree["filelist"].append(line.split()[1])
+        elif(line.startswith("di ")):
+            dir_tree["dirlist"].append(_load_dir_tree(fd,line.split()[1]))
+        else:
+            print("Error synclist file!")
+            exit(1)
 
     return dir_tree
 
@@ -59,6 +66,7 @@ def load_sync_files():
         if not line:
             break
         f = {}
+
         if(line.startswith("F  ")):  # a file to sync
             f["type"] = "file"
             f["content"] = line.split()[1]
@@ -66,7 +74,7 @@ def load_sync_files():
             f["type"] = "dir"
             f["content"] = _load_dir_tree(fd)
 
-        f["remote"] = line.split("->")[1]
+        f["remote_path"] = line.split("->")[1].strip()
 
         sync_files.append(f)
     fd.close()
@@ -127,18 +135,25 @@ def get_file_index_position(path):
 def add_to_sync(local_path,remote_path):
     if not os.path.exists(local_path):
         printf("%1 did not exists in you system!" % local_path)
-    elif os.path.isdir(local_path):
-        sync_files.append(local_path)
+
+    f = {}
+
+    if os.path.isdir(local_path):
+        f["type"] = "dir"
+        f["content"] = _get_dir_tree(local_path)
     elif os.path.isfile(local_path):
-        dir_tree = get_dir_tree(local_path)
-        sync_files.append(dir_tree)
+        f["type"] = "file"
+        f["content"] = local_path
+
+    f["remote_path"] = remote_path
+    sync_files.append(f)
 
 # remove a file from sync tree , path is a file or dir on the 
 # computer
-def remove_from_sync(path):
+def remove_from_sync(path=None):
     remove_file = False
     found_file = False
-    if os.path.ispath(path):
+    if os.path.isfile(path):
         remove_file = True
 
     for f in sync_files:
@@ -155,20 +170,22 @@ def remove_from_sync(path):
         print("the path not contained in the sync list")
 
 # get sync list
-def print_sync_list(deep=None,dir_tree=None):
+def print_sync_list(dir_tree=None,deep=False):
     if dir_tree is None:
         for f in sync_files:
             if f["type"] == "file":
-                print("File "+f["content"]+"->"+f["remote_path"])
+                print("FILE "+ f["content"]+ " -> "+ f["remote_path"])
             elif f["type"] == "dir":
-                print_sync_list(deep,f["content"])
+                print("DIR  "+ f["content"]["name"]+ " -> "+ f["remote_path"])
+                if deep :
+                    print_sync_list(f["content"])
 
-    if dir_tree is not None:
+    else:
         for f in dir_tree["filelist"]:
             print("f "+f)
         for f in dir_tree["dirlist"]:
-            print("d "+f[name])
-            print_sync_list(deep,f)
+            print("d "+f["name"])
+            print_sync_list(f)
 
 # make a sync to remote computer
 def sync(push=None):
@@ -295,7 +312,7 @@ Options:
          add a file or dir to the sync tree 
     --to remotePath
          set remotepath
-    --rm  path
+    --rm path
          remove a file or dir frome the sync tree
     --list
          list the sync file list 
@@ -349,8 +366,7 @@ def main(argv):
     except getopt.GetoptError as err:
         error(err)
     for o, a in opts:
-        if on in ["--help","--pull","--push"]:
-            if len(argv) != 2:
+        if o in ["--help","--pull","--push"]:
                 error("too much arguments")
 
         if o == "--help":
@@ -375,12 +391,10 @@ def main(argv):
         else:
             error("Wrong arguments : %s ! " % o)
 
-    if locale_file != None and remote_file != None:
+    if local_file != None and remote_file != None:
         add_to_sync(local_file,remote_file)
     elif print_tree:
         print_sync_list(deep=deep_print)
-    else:
-        error("too many arguments!")
 
     if sync_file_changed :
         save_sync_files()
