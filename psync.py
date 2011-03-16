@@ -4,6 +4,7 @@
 # psync to for management the sync file to communitcat
 # with reomte computer
 # jianjun365222@gmail.com
+# git test
 
 import os, sys, subprocess, shlex, getopt
 
