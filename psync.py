@@ -1,12 +1,14 @@
 #!/usr/bin/env python3.1
 
-# jianjun create the psync project at feb 24,2011
-# psync to for management the sync file to communitcat
-# with reomte computer
-# jianjun365222@gmail.com
-# git test
+#
+#   jianjun create the psync project at feb 24,2011
+#   psync to for management the sync file to communicate
+#   with reomte computer
+#   jianjun365222@gmail.com
+# 
 
-import os, sys, subprocess, shlex, getopt
+import os, sys, subprocess, shlex, getopt, base64
+from datetime import datetime
 
 # the sync file list , orginazed as a list of dir or files
 # dir contains files , the structure is descript bellow
@@ -29,6 +31,7 @@ sync_file="./synclist"
 
 user_data={}
 
+SYNCDIR = True
 
 #read frome the file , at a line started by "di" ,
 #and read on , to construct a dir structrue
@@ -119,7 +122,6 @@ def _get_dir_tree(dirpath):
         file_path = os.path.join(dirpath,f)
 
         if os.path.isfile(file_path):
-            print(file_path)
             current['filelist'].append(f)
         if os.path.isdir(file_path):
             current['dirlist'].append( _get_dir_tree( file_path ) )
@@ -189,30 +191,42 @@ def print_sync_list(dir_tree=None,deep=False):
             print_sync_list(f)
 
 # make a sync to remote computer
-def sync(push=None):
-    push_file = True
-    if push == False:
-        push_file = False
+def sync(sync_type = None):
+    if sync_type==None:
+        sync_type = "push"
+    if sync_type not in ["push","pull"]:
+        error("please choose right sync method: push,push or None")
+
+    sync_sign = "<-"
+    if sync_type == "push":
+        sync_sign = "->"
+
+    start_time = datetime.now()
+    print("Remote  %s\nStart Time    %s\nType  %s \n" % (user_data["hostname"],start_time,sync_type))
 
     for f in sync_files:
         if f["type"] == "file":
-            do_sync_file(f["content"],f["remote"])
+            print("SYNC FILE : local: %s %s remote: %s" % (f["content"],sync_sign,f["remote_path"]) )
+            do_sync_file(f["content"],f["remote_path"],sync_type)
         elif f["type"] == "dir":
-            do_sync_dir(f["content"],f["remote"])
+            print("SYNC DIR : local: %s %s remote: %s" % (f["content"]["name"],sync_sign,f["remote_path"]) )
+            do_sync_dir(f["content"],f["remote_path"],sync_type)
+    end_time = datetime.now()
+    print("\nsync end at %s" %(end_time))
+    print("time used: %s " % (end_time - start_time))
 
-push_cmd = "rsync %(localfile)s %(username)s@%(hostname):%(remote)"
-pull_cmd = "rsync %(username)s@%(hostname):%(remote) %(localfile)s"
-create_dir_cmd = "ssh %(username)s@%(hostname)s \"cd %(path);mkdir %(dir_name)\" "
-check_dir_exist = "rsync %(username)s@%(hostname)s:%(remote_dir)s|grep %(dir_name)s"
+push_cmd = "rsync -av  %(localfile)s %(username)s@%(hostname)s:%(remote)s > /dev/null"
+pull_cmd = "rsync -av  %(username)s@%(hostname)s:%(remote)s %(localfile)s > /dev/null"
+create_dir_cmd = "ssh %(username)s@%(hostname)s \"cd %(path)s;mkdir %(dir_name)s\" >/dev/null "
+check_dir_exist = "rsync %(username)s@%(hostname)s:%(remote_dir)s|grep ^d.*\ %(dir_name)s$ > /dev/null"
 
 #first check if remote dir is exist , if not , create it
 def _check_remote_dir(local_dir,remote_dir):
-    return
     cmd = check_dir_exist % {
         'username' : user_data["username"],
         'hostname' : user_data["hostname"],
-        'remote_dir' : os.path.dirname(remote_dir),
-        'dir_name' : os.path.basename(remote_dir)
+        'remote_dir' : os.path.dirname(remote_dir)+"/",
+        'dir_name' : os.path.basename(local_dir)
         }
 
     ret = subprocess.call(cmd, shell=True)
@@ -224,7 +238,7 @@ def _check_remote_dir(local_dir,remote_dir):
         'username' : user_data["username"],
         'hostname' : user_data["hostname"],
         'path' : os.path.dirname(remote_dir),
-        'dir_name' : os.path.basename(remote_dir)
+        'dir_name' : os.path.basename(local_dir)
         }
 
     ret = subprocess.call(cmd,shell=True)
@@ -236,29 +250,35 @@ def _check_remote_dir(local_dir,remote_dir):
 #sync a local dir to a remote dir recursivly
 def do_sync_dir(local_dir, remote_dir, sync_type=None):
     #if remote computer have not the dir , create it
+    print(" syncing %s " % local_dir["name"] )
+
+    if SYNCDIR :
+        if sync_type == "push":
+            do_sync_file(local_dir["name"]+"/",remote_dir,sync_type)
+        else:
+            do_sync_file(local_dir["name"],remote_dir+"/",sync_type)
+        return
+
     _check_remote_dir(local_dir["name"],remote_dir);
     
-    for f in local_dir["filelist"]:
-        f_dir = os.path.join(local_dir["name"],f)
-        do_sync_file(f,remote_dir,sync_type)
+    #for f in local_dir["filelist"]:
+    do_sync_file(" ".join(local_dir["filelist"]),remote_dir,sync_type)
         
-    remote_dir = os.path.join(remote_dir,os.path.basename(local_dir["name"]))
+    base_dir = remote_dir
     for d in local_dir["dirlist"]:
+        remote_dir = os.path.join(base_dir,os.path.basename(d["name"]))
         do_sync_dir(d,remote_dir,sync_type)
-
 
 #sync a local file with a remote file,default sync type is push
 def do_sync_file(local_file, remote_dir, sync_type=None):
-    print("sync %s to %s" % (local_file,remote_dir))
-    return
     if sync_type == 'pull':
         cmd = pull_cmd
     else:
         cmd = push_cmd
 
-    cmd = push_cmd % {
+    cmd = cmd % {
         'localfile' : local_file,
-        'remote' : remote_file,
+        'remote' : remote_dir,
         'username' : user_data["username"],
         'hostname' : user_data["hostname"]
         }
@@ -277,24 +297,28 @@ def load_config_file():
         try:
             key,val = line.strip().split('=',1)
             if key == 'password':
-                val = base64.decodestring(val)
+                pass#val = base64.decodestring(val)
             user_data[key]=val
         except ValueError:
             pass
 
-def set_remote_host(hostname,username,password):
-    user_data['hostname'] = hostname
-    user_data['username'] = username
-    user_data['password'] = password
+def set_remote_host(hostname=None,username=None,password=None):
+    if hostname != None:
+        user_data['hostname'] = hostname
+    if username != None:
+        user_data['username'] = username
+    if password != None:
+        user_data['password'] = password
 
 def save():
     data = open('.config','w')
-    for key,val in user_data:
+    print(user_data)
+    for key,val in user_data.items():
         if key == 'password':
-            val = base64.encodestring(val)
-        line = "%s=%s" % (key , unicode(val))
+            pass#val = base64.encodestring(val.encode('utf-8'))
+        line = "%s=%s\n" % (key , val)
         data.write(line)
-
+ 
 def usage():
     sys.stderr.write("""
 Usage: 
@@ -305,6 +329,8 @@ Remove a file from sync :psync --rm filepath
 List sync files and dirctorys : psync --list [--deep]
 
 Options:
+    --config [host|user|passwd] value
+         set the configure value
     --pull 
          make a pull sync to remote computer 
     --push 
@@ -345,7 +371,6 @@ def test():
     save_sync_files()
 
 def main(argv):
-
     if argv[1]=="--test":
         test()
         return
@@ -363,20 +388,18 @@ def main(argv):
     deep_print=False
     
     try:
-        opts, args = getopt.getopt(argv[1:], "l:r:", ["help", "pull","push","add=","to=","rm=","list","deep","test"])
+        opts, args = getopt.getopt(argv[1:], "l:r:", ["help", "pull","push","add=","to=","rm=","list","deep","test","config="])
     except getopt.GetoptError as err:
         error(err)
     for o, a in opts:
-        if o in ["--help","--pull","--push"]:
-                error("too much arguments")
 
         if o == "--help":
             usage()
             exit(0)
         elif o == "--pull":
-            sync(False)
+            sync("pull")
         elif o == "--push":
-            sync(True)
+            sync("push")
         elif o == "--list":
             print_tree=True
         elif o == "--add":
@@ -389,6 +412,19 @@ def main(argv):
             remove_from_sync(a)
         elif o == "--deep":
             deep_print=True
+        elif o == "--config":
+            if len(argv) != 4:
+                error("missing arguments!")
+            value = argv[-1:][0]
+            if a=="hostname":
+                set_remote_host(hostname=value)
+            elif a=="username":
+                set_remote_host(username=value)
+            elif a=="password":
+                set_remote_host(password=value)
+            else:
+                error("no such configure value!")
+            save()
         else:
             error("Wrong arguments : %s ! " % o)
 
@@ -403,5 +439,5 @@ def main(argv):
 if __name__ == '__main__':
     main(sys.argv)
 
-#end of file
+
 
