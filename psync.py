@@ -14,7 +14,7 @@ from datetime import datetime
 # dir contains files , the structure is descript bellow
 #
 #      |--"name":dir name
-#      |
+#      |  
 #      |
 # dir -|--"filelist":["filename1","filename2",]
 #      |
@@ -197,19 +197,22 @@ def sync(sync_type = None):
     if sync_type not in ["push","pull"]:
         error("please choose right sync method: push,push or None")
 
-    sync_sign = "<-"
+    color_green_start = "\033[102m\033[95m"
+    color_cyan_start = "\033[95m"
+    color_end = "\033[0m"
+    sync_sign = color_green_start+ "<-"+ color_end
     if sync_type == "push":
-        sync_sign = "->"
+        sync_sign = color_green_start+ "->"+ color_end
 
     start_time = datetime.now()
     print("Remote  %s\nStart Time    %s\nType  %s \n" % (user_data["hostname"],start_time,sync_type))
 
     for f in sync_files:
         if f["type"] == "file":
-            print("SYNC FILE : local: %s %s remote: %s" % (f["content"],sync_sign,f["remote_path"]) )
+            print("%sSYNC FILE%s : local: %s %s remote: %s" % (color_cyan_start,color_end,f["content"],sync_sign,f["remote_path"]) )
             do_sync_file(f["content"],f["remote_path"],sync_type)
         elif f["type"] == "dir":
-            print("SYNC DIR : local: %s %s remote: %s" % (f["content"]["name"],sync_sign,f["remote_path"]) )
+            print("%sSYNC DIR%s : local: %s %s remote: %s" % (color_cyan_start,color_end,f["content"]["name"],sync_sign,f["remote_path"]) )
             do_sync_dir(f["content"],f["remote_path"],sync_type)
     end_time = datetime.now()
     print("\nsync end at %s" %(end_time))
@@ -284,7 +287,7 @@ def do_sync_file(local_file, remote_dir, sync_type=None):
         }
 
     env = os.environ.copy()
-    env["RSYNC_PASSWORD"] = user_data["password"]
+    #env["RSYNC_PASSWORD"] = user_data["password"]
     ret = subprocess.call(cmd, env=env, shell=True)
     if ret == -1:
         print("sync %s failed" % local_file)
@@ -301,6 +304,9 @@ def load_config_file():
             user_data[key]=val
         except ValueError:
             pass
+    if not "hostname" in user_data.keys() or not "username" in user_data.keys():
+        error("missing remote hostname and username ,you have to set configure file")
+
 
 def set_remote_host(hostname=None,username=None,password=None):
     if hostname != None:
